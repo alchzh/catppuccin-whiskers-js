@@ -70,7 +70,7 @@ export function registerWhiskers(handlebarsEnv: typeof Handlebars): WhiskersEnv 
       return wrapTemplateFunction<T>(template, attributes)
     },
 
-    precompile<T = any>(input: string, options?: PrecompileOptions): WhiskersTemplateSpecification {
+    precompile(input: string, options?: PrecompileOptions): WhiskersTemplateSpecification {
       const { attributes, body } = fm<object>(input)
 
       const precompilation = Object.assign(super.precompile(body, options), {
