@@ -1,0 +1,22 @@
+{
+  "name": "catppuccin-whiskers",
+  "version": "1.0.0",
+  "description": "Replicates some of the custom helpers of the whiskers tool with JavaScript handlebars",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "catppuccin",
+    "handlebars"
+  ],
+  "author": "Albert Zhang <alchzh@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@catppuccin/palette": "^0.2.0",
+    "colord": "^2.9.3",
+    "front-matter": "^4.0.2",
+    "handlebars": "^4.7.8"
+  },
+  "type": "module"
+}
