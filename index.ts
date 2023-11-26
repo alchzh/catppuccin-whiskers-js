@@ -31,6 +31,7 @@ function wrapTemplateFunction<T = any>(template: Handlebars.TemplateDelegate<T>,
 
       const flavorContext = runtimeOptions?.flavor == null ? {} : flavors[runtimeOptions.flavor]
       const whiskersContext = {
+        flavors,
         ...qualifiedNames,
         ...flavorContext,
         ...(frontmatter ?? {}),
@@ -46,11 +47,15 @@ function wrapTemplateFunction<T = any>(template: Handlebars.TemplateDelegate<T>,
   })
 }
 
-type WhiskersEnv = typeof Handlebars & {
+export type WhiskersEnv = typeof Handlebars & {
   compile<T = any>(input: string, options?: CompileOptions): WhiskersTemplateDelegate<T>
   precompile(input: string, options?: PrecompileOptions): WhiskersTemplateSpecification
   template<T = any>(precompilation: WhiskersTemplateSpecification): WhiskersTemplateDelegate<T>
   create(): WhiskersEnv
+}
+
+function extendObject<B extends object, E>(base: B, extended: E): B & E {
+  return Object.setPrototypeOf(extended, base)
 }
 
 /**
@@ -62,7 +67,7 @@ type WhiskersEnv = typeof Handlebars & {
  * @returns The existing environment `handlebarsEnv` for chaining
  */
 export function registerWhiskers(handlebarsEnv: typeof Handlebars): WhiskersEnv {
-  const whiskersEnv: WhiskersEnv = Object.setPrototypeOf({
+  const whiskersEnv: WhiskersEnv = extendObject(handlebarsEnv, {
     compile<T = any>(input: string, options?: CompileOptions): WhiskersTemplateDelegate<T> {
       const { attributes, body } = fm<object>(input)
       const template = super.compile(body, options)
@@ -89,7 +94,7 @@ export function registerWhiskers(handlebarsEnv: typeof Handlebars): WhiskersEnv 
     create() {
       return registerWhiskers(super.create())
     }
-  }, handlebarsEnv)
+  })
 
   whiskersEnv.registerHelper(miscHelpers)
   whiskersEnv.registerHelper(colorHelpers)
