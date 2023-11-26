@@ -1,5 +1,5 @@
 import Handlebars from 'handlebars'
-import { qualifiedNames, flavors, type FlavorName } from './lib/catppuccin.js'
+import { flavors, type FlavorName } from './lib/catppuccin.js'
 import _fm from 'front-matter'
 
 import miscHelpers from './lib/helpers/misc.js'
@@ -31,8 +31,8 @@ function wrapTemplateFunction<T = any>(template: Handlebars.TemplateDelegate<T>,
 
       const flavorContext = runtimeOptions?.flavor == null ? {} : flavors[runtimeOptions.flavor]
       const whiskersContext = {
-        flavors,
-        ...qualifiedNames,
+        cptFlavors: flavors, // think of a better name for this
+        flavor: runtimeOptions?.flavor,
         ...flavorContext,
         ...(frontmatter ?? {}),
         ...context
