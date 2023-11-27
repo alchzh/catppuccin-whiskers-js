@@ -1,7 +1,7 @@
 {
-  "name": "catppuccin-whiskers",
+  "name": "catppuccin-whiskers-js",
   "version": "2.0.0",
-  "description": "Replicates some of the custom helpers of the whiskers tool with JavaScript handlebars",
+  "description": "Modified Handlebars for creating Catppuccin color themes. Based on the whiskers tool in the catppuccin toolbox",
   "main": "index.js",
   "scripts": {
     "prepare": "tsc",
