@@ -2,6 +2,7 @@ import Handlebars from 'handlebars'
 import { flavors, type FlavorName } from './lib/catppuccin.js'
 import _fm from 'front-matter'
 
+import catppuccinHelpers from './lib/helpers/catppuccin.js'
 import miscHelpers from './lib/helpers/misc.js'
 import colorHelpers from './lib/helpers/colors.js'
 import { unquoteHelper, decodeUnquote } from './lib/helpers/unquote.js'
@@ -99,6 +100,7 @@ export function registerWhiskers(handlebarsEnv: typeof Handlebars): WhiskersEnv 
   whiskersEnv.registerHelper(miscHelpers)
   whiskersEnv.registerHelper(colorHelpers)
   whiskersEnv.registerHelper(unquoteHelper)
+  whiskersEnv.registerHelper(catppuccinHelpers)
 
   return whiskersEnv
 }

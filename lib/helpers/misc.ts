@@ -1,4 +1,4 @@
-import { type HelperOptions } from 'handlebars'
+import { default as betterTitleCase } from 'better-title-case'
 
 export function truncate(num: number, places: number) {
   return Math.trunc(num * Math.pow(10, places)) / Math.pow(10, places)
@@ -12,7 +12,13 @@ export function roundTo(num: number, places: number) {
 export default {
   trunc: truncate,
   round: roundTo,
-  darklight(dark: any, light: any, options: HelperOptions) {
-    return options?.data?.root?.isLight ? light : dark
+  uppercase(str: string) {
+    return str.toUpperCase()
+  },
+  lowercase(str: string) {
+    return str.toLowerCase()
+  },
+  titlecase(str: string) {
+    return betterTitleCase(str)
   }
 }

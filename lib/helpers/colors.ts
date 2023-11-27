@@ -42,6 +42,7 @@ export default {
   opacity: colordAmountHelper((c, a: number) => c.alpha(a)),
   rotate: colordAmountHelper((c, a: number) => c.rotate(a)),
 
+  hex: colordHelper(c => c),
   rgb: colordHelper(c => c.alpha(1).toRgbString()),
   rgba: colordHelper(c => {
     const { r, g, b, a } = c.rgba
@@ -58,8 +59,12 @@ export default {
   blue_i: colordHelper(c => c.rgba.b),
   alpha_i: colordHelper(c => Math.round(c.rgba.a * 256)),
 
-  red_f: colordHelper(c => c.rgba.r),
-  green_f: colordHelper(c => c.rgba.g),
-  blue_f: colordHelper(c => c.rgba.b),
-  alpha_f: colordHelper(c => roundTo(c.rgba.a, 2))
+  red_f: colordHelper(c => c.rgba.r / 256),
+  green_f: colordHelper(c => c.rgba.g / 256),
+  blue_f: colordHelper(c => c.rgba.b / 256),
+  alpha_f: colordHelper(c => c.rgba.a),
+
+  hue: colordHelper(c => c.toHsl().h),
+  saturation: colordHelper(c => c.toHsl().s),
+  lightness: colordHelper(c => c.toHsl().l),
 }
