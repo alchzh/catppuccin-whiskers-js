@@ -1,6 +1,6 @@
 {
   "name": "catppuccin-whiskers",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Replicates some of the custom helpers of the whiskers tool with JavaScript handlebars",
   "main": "index.js",
   "scripts": {
