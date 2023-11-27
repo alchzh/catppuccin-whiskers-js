@@ -1,17 +1,12 @@
 import Handlebars from 'handlebars'
-import _fm from 'front-matter'
-import { objectHasOwn } from 'ts-extras'
+import { objectHasOwn } from './ts-extras.js'
 
+import fm from './front-matter.js'
 import { flavors, labels, accents, type FlavorName } from './catppuccin.js'
 import { decodeUnquote } from './helpers/unquote.js'
 import { WhiskersHelpers, WhiskersKnownHelpers } from './helpers/index.js'
 import { SourceNode } from 'source-map'
 
-
-// Fix incorrect typing supplied by 'front-matter'
-// https://github.com/jxson/front-matter/pull/77
-// @ts-ignore
-const fm: typeof _fm.default = _fm
 
 export interface WhiskersRuntimeOptions extends Handlebars.RuntimeOptions {
   flavor?: FlavorName
@@ -64,6 +59,23 @@ function fakeExtendObject<B extends object, E extends object>(base: B, extended:
 }
 
 declare namespace _HandlebarsExtras {
+  interface PrecompileOptionsWithMap extends PrecompileOptions {
+    srcName: string
+  }
+
+  interface PrecompileOptionsNoMap extends PrecompileOptions {
+    srcName: undefined
+  }
+
+  interface PrecompileWithMapResult {
+    code: string
+    map: string
+  }
+
+  export function precompile(input: string, options: PrecompileOptionsWithMap): PrecompileWithMapResult
+  export function precompile(input: string, options: PrecompileOptionsNoMap | undefined): string
+
+
   class Compiler {
     compile(input: any, options?: CompileOptions): any
   }
@@ -84,6 +96,7 @@ export type WhiskersEnv = HandlebarsEnv & {
 
   template<T = any>(spec: FrontMatterAnnotated): WhiskersTemplateDelegate<T>
   compile<T = any>(input: string, options?: CompileOptions): WhiskersTemplateDelegate<T>
+
   parse(input: string, options?: CompileOptions): FrontMatterAnnotated
   create(): WhiskersEnv
 }
@@ -173,3 +186,5 @@ export function registerWhiskers(handlebarsEnv: HandlebarsEnv | WhiskersEnv): Wh
 
   return whiskersEnv
 }
+
+export const RootHandlebars = Handlebars as HandlebarsEnv

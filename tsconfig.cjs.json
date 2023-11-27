@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig",
+  "compilerOptions": {
+    "module": "commonjs",
+    "strict": false,
+    "verbatimModuleSyntax": false,
+    "declaration": true,
+    "allowJs": true,
+    "checkJs": false,
+    "outDir": "dist/cjs"
+  },
+  "include": [
+    "index.ts",
+    "lib/**/*.ts",
+    "cli/precompiler.js",
+  ]
+}

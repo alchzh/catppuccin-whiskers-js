@@ -1,4 +1,4 @@
-import Whiskers from './dist/index.js'
+import Whiskers from './dist/esm/index.js'
 
 const template = `---
 mdThemes:
@@ -64,16 +64,12 @@ mdThemes:
     lavender: "AAMxLjEBAQI2ZWQxODJiOC04NGE0LTRjNWYtYjc2Ni1kM2Y3MjRiYjA3ODUD9NbN_wQuHh7_BUQyMf8GY0lH_wcmHBz_CFpHRf8JeF9c_wo9MC__C3BbWP8MjXJv_w1TQ0H_DoZwbP8PnouI_xBpWFX_EZyEf_8Ss6Cd_xODamX_FLKZk_8VyLay_xadfXX_F97Cuv8YspmT_xlaR0X_GnBbWP8bcFtY_xxEMjH_Hf6-tP8e_qia_x_9fWn_IKiL8_8hoeOm_yKv4vn_I-vcif8k3sK6_yX3psv_Jvq0if8nqIvz_yiFXO7_KWQv6f8="
 ---
 
-<table>
-  <tr><th></th><th><b>Accent Color</b></th><th><b>🌻 Latte</b></th><th><b>🪴 Frappé</b></th><th><b>🌺 Macchiato</b></th><th><b>🌿 Mocha</b></th></tr>
-  {{#each accents}}
-  <tr>
-    <td><img src="https://raw.githubusercontent.com/catppuccin/catppuccin/main/assets/palette/circles/latte_{{@key}}.png" height="23" width="23"></img></td>
-    {{#each ../flavors}}
-    <td><a target="_blank" href="https://mangadex.org/?theme={{{get ../../mdThemes @key @../key}}}">{{titlecase @key}}-{{titlecase @../key}}</a></td>
-    {{/each}}
+{{#each mdThemes}}
+  {{@key}}
+  {{#each this}}
+    {{@../key}}-{{@key}} #{{get flavors ../key @key }} {{{this}}}
   {{/each}}
-</table>
+{{/each}}
 `
 
 console.log(Whiskers.compile(template)())

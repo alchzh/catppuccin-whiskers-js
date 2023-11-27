@@ -1,5 +1,5 @@
 import { variants as cptFlavors, labels as cptLabels } from '@catppuccin/palette'
-import { objectFromEntries, objectEntries, objectKeys } from 'ts-extras'
+import { objectFromEntries, objectEntries, objectKeys } from './ts-extras.js'
 
 export type LabelName = keyof typeof cptLabels
 export type FlavorName = keyof typeof cptFlavors

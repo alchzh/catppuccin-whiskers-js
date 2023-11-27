@@ -1,5 +1,3 @@
-import { default as betterTitleCase } from 'better-title-case'
-
 export function truncate(num: number, places: number) {
   return Math.trunc(num * Math.pow(10, places)) / Math.pow(10, places)
 }
@@ -18,8 +16,8 @@ export default {
   lowercase(str: string) {
     return str.toLowerCase()
   },
-  titlecase(str: string) {
-    return betterTitleCase(str)
+  async titlecase(str: string) {
+    return (await import('better-title-case')).default(str)
   },
   get(obj: object, ...args: any[]) {
     if (!args.length) {

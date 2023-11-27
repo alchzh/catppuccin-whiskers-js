@@ -1,4 +1,4 @@
-import { objectFromEntries, objectKeys } from 'ts-extras'
+import { objectFromEntries, objectKeys } from '../ts-extras.js'
 
 import catppuccinHelpers from './catppuccin.js'
 import miscHelpers from './misc.js'
