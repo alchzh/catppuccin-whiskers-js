@@ -20,5 +20,12 @@ export default {
   },
   titlecase(str: string) {
     return betterTitleCase(str)
+  },
+  get(obj: object, ...args: any[]) {
+    if (!args.length) {
+      return undefined
+    }
+    const { lookupProperty } = args.pop()
+    return args.reduce((o, k) => o == null ? o : lookupProperty(o, k), obj)
   }
 }

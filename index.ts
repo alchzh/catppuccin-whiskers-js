@@ -1,11 +1,11 @@
 import Handlebars from 'handlebars'
-import { flavors, type FlavorName } from './lib/catppuccin.js'
 import _fm from 'front-matter'
+import { objectHasOwn } from 'ts-extras'
 
-import catppuccinHelpers from './lib/helpers/catppuccin.js'
-import miscHelpers from './lib/helpers/misc.js'
-import colorHelpers from './lib/helpers/colors.js'
-import { unquoteHelper, decodeUnquote } from './lib/helpers/unquote.js'
+import { flavors, qualifiedNames, type FlavorName } from './lib/catppuccin.js'
+import { decodeUnquote } from './lib/helpers/unquote.js'
+import { WhiskersHelpers, WhiskersKnownHelpers } from './lib/helpers/index.js'
+import { SourceNode } from 'source-map'
 
 // Fix incorrect typing supplied by 'front-matter'
 // https://github.com/jxson/front-matter/pull/77
@@ -20,26 +20,28 @@ interface WhiskersTemplateDelegate<T = any> {
   (context: T, options?: WhiskersRuntimeOptions): string;
 }
 
-type WhiskersTemplateSpecification = ReturnType<typeof Handlebars.precompile> & {
-  _whiskers_frontmatter?: object
+export interface FrontMatterAnnotated {
+  "{{whiskersFrontmatter}}"?: object
 }
 
-function wrapTemplateFunction<T = any>(template: Handlebars.TemplateDelegate<T>, frontmatter?: {}): WhiskersTemplateDelegate<T> {
-  return new Proxy(template, {
+function wrapTemplateFunction<T = any>(callable: Handlebars.TemplateDelegate<T>, frontmatter?: {}): WhiskersTemplateDelegate<T> {
+  return new Proxy(callable, {
     apply(target, thisArg, argumentsList) {
       const context = argumentsList[0]
       const runtimeOptions: WhiskersRuntimeOptions | undefined = argumentsList[1]
 
       const flavorContext = runtimeOptions?.flavor == null ? {} : flavors[runtimeOptions.flavor]
       const whiskersContext = {
-        cptFlavors: flavors, // think of a better name for this
+        flavors, // think of a better name for this
+        ...flavors,
+        ...qualifiedNames,
         flavor: runtimeOptions?.flavor,
         ...flavorContext,
         ...(frontmatter ?? {}),
         ...context
       }
 
-      if (runtimeOptions != null && Object.prototype.hasOwnProperty.call(runtimeOptions, "flavor")) {
+      if (runtimeOptions != null && objectHasOwn(runtimeOptions, "flavor")) {
         delete runtimeOptions["flavor"]
       }
 
@@ -48,15 +50,38 @@ function wrapTemplateFunction<T = any>(template: Handlebars.TemplateDelegate<T>,
   })
 }
 
-export type WhiskersEnv = typeof Handlebars & {
-  compile<T = any>(input: string, options?: CompileOptions): WhiskersTemplateDelegate<T>
-  precompile(input: string, options?: PrecompileOptions): WhiskersTemplateSpecification
-  template<T = any>(precompilation: WhiskersTemplateSpecification): WhiskersTemplateDelegate<T>
-  create(): WhiskersEnv
+
+function fakeExtendObject<B extends object, E extends object>(base: B, extended: E): B & E {
+  return Object.assign(base, extended, Object.fromEntries(
+    Object
+      .keys(extended)
+      .filter(key => key in base)
+      // @ts-ignore
+      .map(key => ["_super_" + key, base[key]])
+  ))
 }
 
-function extendObject<B extends object, E>(base: B, extended: E): B & E {
-  return Object.setPrototypeOf(extended, base)
+declare namespace _HandlebarsExtras {
+  class Compiler {
+    compile(input: any, options?: CompileOptions): any
+  }
+
+  class JavaScriptCompiler {
+    srcFile?: string | null
+
+    compile(environment: any, options: CompileOptions, context: any, asObject: boolean): any
+    objectLiteral(obj: object): any
+  }
+}
+
+type HandlebarsEnv = typeof Handlebars & typeof _HandlebarsExtras
+
+export type WhiskersEnv = HandlebarsEnv & {
+  "{{whiskersRegistered}}": true
+
+  template<T = any>(spec: FrontMatterAnnotated): WhiskersTemplateDelegate<T>
+  parse(input: string, options?: CompileOptions): FrontMatterAnnotated
+  create(): WhiskersEnv
 }
 
 /**
@@ -67,40 +92,78 @@ function extendObject<B extends object, E>(base: B, extended: E): B & E {
  *
  * @returns The existing environment `handlebarsEnv` for chaining
  */
-export function registerWhiskers(handlebarsEnv: typeof Handlebars): WhiskersEnv {
-  const whiskersEnv: WhiskersEnv = extendObject(handlebarsEnv, {
-    compile<T = any>(input: string, options?: CompileOptions): WhiskersTemplateDelegate<T> {
-      const { attributes, body } = fm<object>(input)
-      const template = super.compile(body, options)
+export function registerWhiskers(handlebarsEnv: HandlebarsEnv | WhiskersEnv): WhiskersEnv {
+  if ("{{whiskersRegistered}}" in handlebarsEnv && handlebarsEnv["{{whiskersRegistered}}"]) {
+    return handlebarsEnv as WhiskersEnv
+  }
 
-      return wrapTemplateFunction<T>(template, attributes)
+  const whiskersEnv: WhiskersEnv = fakeExtendObject(handlebarsEnv, {
+    "{{whiskersRegistered}}": true as true,
+
+    template<T = any>(spec: FrontMatterAnnotated): WhiskersTemplateDelegate<T> {
+      // @ts-ignore
+      const template = this._super_template(spec)
+
+      return wrapTemplateFunction<T>(template, spec["{{whiskersFrontmatter}}"])
     },
 
-    precompile(input: string, options?: PrecompileOptions): WhiskersTemplateSpecification {
-      const { attributes, body } = fm<object>(input)
+    create(): WhiskersEnv {
+      // @ts-ignore
+      return registerWhiskers(this._super_create())
+    },
 
-      const precompilation = Object.assign(super.precompile(body, options), {
-          _whiskers_frontmatter: attributes
+    parse(input: string, options?: CompileOptions): FrontMatterAnnotated {
+      const { attributes, body } = fm<object>(input)
+      // @ts-ignore
+      const ast = this._super_parse(body, options)
+      return Object.assign(ast, {
+        "{{whiskersFrontmatter}}": attributes
       })
-
-      return precompilation
     },
 
-    template<T = any>(precompilation: WhiskersTemplateSpecification): WhiskersTemplateDelegate<T> {
-      const template = super.template(precompilation)
+    Compiler: class extends handlebarsEnv.Compiler implements FrontMatterAnnotated {
+      "{{whiskersFrontmatter}}"?: object
 
-      return wrapTemplateFunction<T>(template, precompilation._whiskers_frontmatter)
+      compile(input: FrontMatterAnnotated, options: CompileOptions): FrontMatterAnnotated {
+        options.knownHelpers = {
+          ...WhiskersKnownHelpers,
+          ...(options.knownHelpers ?? {}),
+        }
+        this["{{whiskersFrontmatter}}"] = input["{{whiskersFrontmatter}}"]
+        return super.compile(input, options)
+      }
     },
 
-    create() {
-      return registerWhiskers(super.create())
+    JavaScriptCompiler: class extends handlebarsEnv.JavaScriptCompiler implements FrontMatterAnnotated {
+      "{{whiskersFrontmatter}}"?: object
+
+      compile(environment: FrontMatterAnnotated, options: CompileOptions, context: any, asObject: boolean) {
+        if (asObject) {
+          const templateSpec = super.compile(environment, options, context, asObject)
+          templateSpec["{{whiskersFrontmatter}}"] = environment["{{whiskersFrontmatter}}"]
+          return templateSpec
+        } else {
+          this["{{whiskersFrontmatter}}"] = environment["{{whiskersFrontmatter}}"]
+          return super.compile(environment, options, context, asObject)
+        }
+      }
+
+      objectLiteral(obj: object) {
+        if (this["{{whiskersFrontmatter}}"] ?? ("main" in obj && "compiler" in obj)) {
+          const whiskersFrontmatter = new SourceNode(
+            0, 0, this.srcFile ?? null, JSON.stringify(this["{{whiskersFrontmatter}}"]))
+          return super.objectLiteral({
+            ...obj,
+            "{{whiskersFrontmatter}}": whiskersFrontmatter,
+          })
+        } else {
+          return super.objectLiteral(obj)
+        }
+      }
     }
   })
 
-  whiskersEnv.registerHelper(miscHelpers)
-  whiskersEnv.registerHelper(colorHelpers)
-  whiskersEnv.registerHelper(unquoteHelper)
-  whiskersEnv.registerHelper(catppuccinHelpers)
+  whiskersEnv.registerHelper(WhiskersHelpers)
 
   return whiskersEnv
 }
@@ -109,5 +172,5 @@ export function registerWhiskers(handlebarsEnv: typeof Handlebars): WhiskersEnv 
  * An isolated Handlebars environment with the Whiskers helpers and context
  * pre-registered
  */
-export const Whiskers = registerWhiskers(Handlebars.create())
+export const Whiskers = registerWhiskers(Handlebars.create() as HandlebarsEnv)
 export default Whiskers

@@ -21,6 +21,12 @@ export const flavors: FlavorContexts = objectFromEntries(
   )
 )
 
+export const qualifiedNames: Record<string, string> = objectFromEntries(
+  objectEntries(variants).flatMap(([flavor, variantLabels]) =>
+    objectKeys(labels).map(label => [flavor+'-'+label, variantLabels[label].hex.substring(1)])
+  )
+)
+
 export function isLight(flavor: string) {
   return flavor === "latte" || (!(flavor in variants) && undefined)
 }
