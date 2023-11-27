@@ -4,7 +4,8 @@
   "description": "Replicates some of the custom helpers of the whiskers tool with JavaScript handlebars",
   "main": "index.js",
   "scripts": {
-    "prepare": "tsc"
+    "prepare": "tsc",
+    "publish-scoped": "./publish-scoped.sh"
   },
   "keywords": [
     "catppuccin",
