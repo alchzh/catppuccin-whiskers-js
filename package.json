@@ -3,12 +3,11 @@
   "version": "2.2.0",
   "description": "Modified Handlebars for creating Catppuccin color themes. Based on the whiskers tool in the catppuccin toolbox",
   "exports": {
-    "require": "./cjs/index.js",
-    "import": "./esm/index.js"
+    "import": "./index.js"
   },
-  "main": "cjs/index.js",
+  "main": "index.js",
   "scripts": {
-    "prepare": "./prepare.sh",
+    "prepare": "tsc && chmod +x dist/cli/whiskers-cli.js",
     "publish-scoped": "./publish-scoped.sh"
   },
   "keywords": [
@@ -24,23 +23,22 @@
     "front-matter": "^4.0.2",
     "handlebars": "^4.7.8",
     "minimist": "^1.2.8",
-    "neo-async": "^2.6.2",
     "source-map": "^0.7.4",
     "ts-replace-all": "^1.0.0",
-    "type-fest": "^4.8.2",
     "wordwrap": "^1.0.0"
+  },
+  "optionalDependencies": {
+    "uglify-js": "^3.1.4"
   },
   "type": "module",
   "devDependencies": {
-    "@types/neo-async": "^2.6.6",
     "@types/node": "^20.10.0",
-    "ts-node": "^10.9.1",
     "typescript": "^5.3.2"
   },
   "publishConfig": {
     "directory": "dist"
   },
   "bin": {
-    "whiskers-js": "cli/whiskers-js"
+    "whiskers-js": "cli/whiskers-cli.js"
   }
 }

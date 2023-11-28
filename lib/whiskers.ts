@@ -1,5 +1,5 @@
 import Handlebars from 'handlebars'
-import { objectHasOwn } from './ts-extras.js'
+import { objectEntries, objectHasOwn, objectKeys } from './ts-extras.js'
 
 import fm from './front-matter.js'
 import { flavors, labels, accents, type FlavorName } from './catppuccin.js'
@@ -48,14 +48,22 @@ function wrapTemplateFunction<T = any>(callable: Handlebars.TemplateDelegate<T>,
 }
 
 
-function fakeExtendObject<B extends object, E extends object>(base: B, extended: E): B & E {
-  return Object.assign(base, extended, Object.fromEntries(
-    Object
-      .keys(extended)
-      .filter(key => key in base)
+function extendEnv<B extends object, E extends object>(base: B, props: string[], extended: E): B & E {
+  const _super = Object.create(base)
+
+  for (const [key, obj] of Object.entries(extended)) {
+    if (props.includes(key)) {
       // @ts-ignore
-      .map(key => ["_super_" + key, base[key]])
-  ))
+      _super[key] = base[key]
+      // @ts-ignore
+      base[key] = Function.prototype.bind.call(obj, _super)
+    } else {
+      // @ts-ignore
+      base[key] = obj
+    }
+  }
+  // @ts-ignore
+  return base
 }
 
 declare namespace _HandlebarsExtras {
@@ -114,25 +122,23 @@ export function registerWhiskers(handlebarsEnv: HandlebarsEnv | WhiskersEnv): Wh
     return handlebarsEnv as WhiskersEnv
   }
 
-  const whiskersEnv: WhiskersEnv = fakeExtendObject(handlebarsEnv, {
+  const whiskersEnv: WhiskersEnv = extendEnv(handlebarsEnv, ["template", "create", "parse"], {
     "{{whiskersRegistered}}": true as true,
 
-    template<T = any>(spec: FrontMatterAnnotated): WhiskersTemplateDelegate<T> {
-      // @ts-ignore
-      const template = this._super_template(spec)
+    template<T = any>(this: HandlebarsEnv, spec: FrontMatterAnnotated, _super: HandlebarsEnv): WhiskersTemplateDelegate<T> {
+      const template = this.template(spec)
 
       return wrapTemplateFunction<T>(template, spec["{{whiskersFrontmatter}}"])
     },
 
-    create(): WhiskersEnv {
-      // @ts-ignore
-      return registerWhiskers(this._super_create())
+    create(this: HandlebarsEnv): WhiskersEnv {
+      return registerWhiskers(this.create() as HandlebarsEnv)
     },
 
-    parse(input: string, options?: CompileOptions): FrontMatterAnnotated {
+    parse(this: HandlebarsEnv, input: string, options?: CompileOptions): FrontMatterAnnotated {
       const { attributes, body } = fm<object>(input)
       // @ts-ignore
-      const ast = this._super_parse(body, options)
+      const ast = this.parse(body, options)
       return Object.assign(ast, {
         "{{whiskersFrontmatter}}": attributes
       })

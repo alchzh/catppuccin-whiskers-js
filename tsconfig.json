@@ -9,11 +9,15 @@
     "declarationMap": true,
     "esModuleInterop": false,
     "resolveJsonModule": true,
+    "allowJs": true,
+    "checkJs": false,
     "allowSyntheticDefaultImports": true,
-    "outDir": "dist/esm"
+    "outDir": "dist"
   },
   "include": [
     "index.ts",
-    "lib/**/*.ts"
+    "lib/**/*.ts",
+    "cli/*.js",
+    "package.json"
   ]
 }

@@ -1,73 +1,208 @@
-// Copied from handlebars/lib/precompiler.js
-import * as Async from 'neo-async';
-import * as fs from 'node:fs';
-import Whiskers from '../index.js';
-import { basename } from 'path';
-import { SourceMapConsumer, SourceNode } from 'source-map';
-
-export function loadTemplates(opts, callback) {
-  loadStrings(opts, function(err, strings) {
-    if (err) {
-      callback(err);
-    } else {
-      loadFiles(opts, function(err, files) {
-        if (err) {
-          callback(err);
-        } else {
-          opts.templates = strings.concat(files);
-          callback(undefined, opts);
-        }
-      });
+// Modified from handlebars/lib/precompiler.js
+export async function commandPrecompile(argv) {
+  const spec = {
+    'f': {
+      'type': 'string',
+      'description': 'Output File',
+      'alias': 'output'
+    },
+    'map': {
+      'type': 'string',
+      'description': 'Source Map File'
+    },
+    'esm': {
+      'type': 'string',
+      'description': 'Exports to ESM style',
+      'default': true
+    },
+    'esm-import': {
+      'type': 'string',
+      'description': 'Overrides the Whiskers import path in ESM export mode',
+      'default': 'catppuccin-whiskers-js'
+    },
+    'export': {
+      'type': 'boolean',
+      'description': 'Used with --esm to generate an importable module file with the template function default exported.',
+      'default': false
+    },
+    'k': {
+      'type': 'string',
+      'description': 'Known helpers',
+      'alias': 'known'
+    },
+    'o': {
+      'type': 'boolean',
+      'description': 'Known helpers only',
+      'alias': 'knownOnly'
+    },
+    'm': {
+      'type': 'boolean',
+      'description': 'Minimize output',
+      'alias': 'min'
+    },
+    'n': {
+      'type': 'string',
+      'description': 'Template namespace',
+      'alias': 'namespace',
+      'default': 'Whiskers.templates'
+    },
+    's': {
+      'type': 'boolean',
+      'description': 'Output template function only.',
+      'alias': 'simple'
+    },
+    'N': {
+      'type': 'string',
+      'description': 'Name of passed string templates. Optional if running in a simple mode. Required when operating on multiple templates.',
+      'alias': 'name'
+    },
+    'i': {
+      'type': 'string',
+      'description': 'Generates a template from the passed CLI argument.\n"-" is treated as a special value and causes stdin to be read for the template value.',
+      'alias': 'string'
+    },
+    'r': {
+      'type': 'string',
+      'description': 'Template root. Base value that will be stripped from template names.',
+      'alias': 'root'
+    },
+    'p': {
+      'type': 'boolean',
+      'description': 'Compiling a partial template',
+      'alias': 'partial'
+    },
+    'd': {
+      'type': 'boolean',
+      'description': 'Include data when compiling',
+      'alias': 'data'
+    },
+    'e': {
+      'type': 'string',
+      'description': 'Template extension.',
+      'alias': 'extension',
+      'default': 'handlebars'
+    },
+    'b': {
+      'type': 'boolean',
+      'description': 'Removes the BOM (Byte Order Mark) from the beginning of the templates.',
+      'alias': 'bom'
+    },
+    'v': {
+      'type': 'boolean',
+      'description': 'Prints the current compiler version',
+      'alias': 'version'
+    },
+    'help': {
+      'type': 'boolean',
+      'description': 'Outputs this message'
     }
-  });
-};
+  }
 
-function loadStrings(opts, callback) {
+  const opts = { alias: {}, boolean: [], default: {}, string: [] };
+
+  for (const [arg, opt] of Object.entries(spec)) {
+    opts[opt.type].push(arg);
+    if ('alias' in opt) opts.alias[arg] = opt.alias;
+    if ('default' in opt) opts.default[arg] = opt.default;
+  }
+
+  const args = (await import("minimist")).default(argv, opts);
+  args._spec = spec;
+
+  args.files = args._;
+  delete args._;
+
+  await loadTemplates(args)
+
+  if (args.help || (!args.templates.length && !args.version)) {
+    printUsage(args._spec, 120);
+  } else {
+    cli(args);
+  }
+}
+
+function pad(n) {
+  var str = '';
+  while (str.length < n) {
+    str += ' ';
+  }
+  return str;
+}
+
+async function printUsage(spec, wrap) {
+  var wordwrap = (await import('wordwrap')).default;
+
+  console.log('Precompile whiskers templates.');
+  console.log('Usage: whiskers-js precompile [template|directory]...');
+
+  var opts = [];
+  var width = 0;
+  Object.keys(spec).forEach(function (arg) {
+    var opt = spec[arg];
+
+    var name = (arg.length === 1 ? '-' : '--') + arg;
+    if ('alias' in opt) name += ', --' + opt.alias;
+
+    var meta = '[' + opt.type + ']';
+    if ('default' in opt) meta += ' [default: ' + JSON.stringify(opt.default) + ']';
+
+    opts.push({ name: name, desc: opt.description, meta: meta });
+    if (name.length > width) width = name.length;
+  });
+
+  console.log('Options:');
+  opts.forEach(function (opt) {
+    var desc = wordwrap(width + 4, wrap + 1)(opt.desc);
+
+    console.log('  %s%s%s%s%s',
+      opt.name,
+      pad(width - opt.name.length + 2),
+      desc.slice(width + 4),
+      pad(wrap - opt.meta.length - desc.split(/\n/).pop().length),
+      opt.meta
+      );
+  });
+}
+
+export async function loadTemplates(opts) {
+  const strings = await loadStrings(opts)
+  const files = await loadFiles(opts)
+  opts.templates = strings.concat(files);
+  return opts
+}
+
+// https://stackoverflow.com/a/54565854
+async function readStream(stream) {
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function loadStrings(opts) {
   let strings = arrayCast(opts.string),
     names = arrayCast(opts.name);
 
   if (names.length !== strings.length && strings.length > 1) {
-    return callback(
-      new Whiskers.Exception(
-        'Number of names did not match the number of string inputs'
-      )
-    );
+    throw new Whiskers.Exception(
+      'Number of names did not match the number of string inputs'
+    )
   }
 
-  Async.map(
-    strings,
-    function(string, callback) {
-      if (string !== '-') {
-        callback(undefined, string);
-      } else {
-        // Load from stdin
-        let buffer = '';
-        process.stdin.setEncoding('utf8');
-
-        process.stdin.on('data', function(chunk) {
-          buffer += chunk;
-        });
-        process.stdin.on('end', function() {
-          callback(undefined, buffer);
-        });
-      }
-    },
-    function(err, strings) {
-      strings = strings.map((string, index) => ({
-        name: names[index],
-        path: names[index],
-        source: string
-      }));
-      callback(err, strings);
-    }
-  );
+  return await Promise.all(strings.map(async (string, index) => ({
+    name: names[index],
+    path: names[index],
+    source: string !== '-' ? string : await readStream(process.stdin)
+  })))
 }
 
-function loadFiles(opts, callback) {
+async function loadFiles(opts) {
+  const fsPromises = await import("node:fs/promises")
+  const { default: Whiskers } = await import("../index.js")
+
   // Build file extension pattern
   let extension = (opts.extension || 'handlebars').replace(
     /[\\^$*+?.():=!|{}\-[\]]/g,
-    function(arg) {
+    function (arg) {
       return '\\' + arg;
     }
   );
@@ -75,81 +210,59 @@ function loadFiles(opts, callback) {
 
   let ret = [],
     queue = (opts.files || []).map(template => ({ template, root: opts.root }));
-  Async.whilst(
-    () => queue.length,
-    function(callback) {
-      let { template: path, root } = queue.shift();
 
-      fs.stat(path, function(err, stat) {
-        if (err) {
-          return callback(
-            new Whiskers.Exception(`Unable to open template file "${path}"`)
-          );
-        }
-
-        if (stat.isDirectory()) {
-          opts.hasDirectory = true;
-
-          fs.readdir(path, function(err, children) {
-            /* istanbul ignore next : Race condition that being too lazy to test */
-            if (err) {
-              return callback(err);
-            }
-            children.forEach(function(file) {
-              let childPath = path + '/' + file;
-
-              if (
-                extension.test(childPath) ||
-                fs.statSync(childPath).isDirectory()
-              ) {
-                queue.push({ template: childPath, root: root || path });
-              }
-            });
-
-            callback();
-          });
-        } else {
-          fs.readFile(path, 'utf8', function(err, data) {
-            /* istanbul ignore next : Race condition that being too lazy to test */
-            if (err) {
-              return callback(err);
-            }
-
-            if (opts.bom && data.indexOf('\uFEFF') === 0) {
-              data = data.substring(1);
-            }
-
-            // Clean the template name
-            let name = path;
-            if (!root) {
-              name = basename(name);
-            } else if (name.indexOf(root) === 0) {
-              name = name.substring(root.length + 1);
-            }
-            name = name.replace(extension, '');
-
-            ret.push({
-              path: path,
-              name: name,
-              source: data
-            });
-
-            callback();
-          });
-        }
-      });
-    },
-    function(err) {
-      if (err) {
-        callback(err);
-      } else {
-        callback(undefined, ret);
-      }
+  while (queue.length) {
+    let { template: path, root } = queue.shift();
+    let stat;
+    try {
+      stat = await fsPromises.stat(path)
+    } catch (err) {
+      throw new Whiskers.Exception(`Unable to open template file "${path}"`)
     }
-  );
+
+    if (stat.isDirectory()) {
+      opts.hasDirectory = true;
+
+      let children = fs.readdir(path)
+
+      children.forEach(function (file) {
+        let childPath = path + '/' + file;
+
+        if (
+          extension.test(childPath) ||
+          fs.statSync(childPath).isDirectory()
+        ) {
+          queue.push({ template: childPath, root: root || path });
+        }
+      })
+    } else {
+      const data = await fsPromises.readFile(path, 'utf-8')
+
+      if (opts.bom && data.indexOf('\uFEFF') === 0) {
+        data = data.substring(1);
+      }
+      let name = path;
+      if (!root) {
+        name = (await import("path")).basename(name);
+      } else if (name.indexOf(root) === 0) {
+        name = name.substring(root.length + 1);
+      }
+      name = name.replace(extension, '');
+
+      ret.push({
+        path: path,
+        name: name,
+        source: data
+      });
+    }
+  }
+
+  return ret
 }
 
-export function cli(opts) {
+export async function cli(opts) {
+  const { default: Whiskers } = await import("../index.js")
+
   if (opts.version) {
     console.log(Whiskers.VERSION);
     return;
@@ -165,25 +278,27 @@ export function cli(opts) {
     throw new Whiskers.Exception('Unable to minimize simple output');
   }
 
-  const multiple = opts.templates.length !== 1 || opts.hasDirectory;
-  if (opts.simple && multiple) {
+  const multipleIn = opts.templates.length !== 1 || opts.hasDirectory;
+  if (opts.export) {
+    opts.esm = true;
+    if (opts.simple || multipleIn) {
+      throw new Whiskers.Exception('--export can only be used with ESM output for a single file');
+    }
+  }
+  if (opts.simple && multipleIn) {
     throw new Whiskers.Exception(
       'Unable to output multiple templates in simple mode'
     );
   }
 
   // Force simple mode if we have only one template and it's unnamed.
-  if (
-    !opts.amd &&
-    !opts.commonjs &&
+  opts.simple ||= (
+    !opts.esm &&
     opts.templates.length === 1 &&
     !opts.templates[0].name
-  ) {
-    opts.simple = true;
-  }
+  )
 
   // Convert the known list into a hash
-  /** @type {Record<String, boolean>}} */
   let known = {};
   if (opts.known && !Array.isArray(opts.known)) {
     opts.known = [opts.known];
@@ -196,10 +311,11 @@ export function cli(opts) {
 
   const objectName = opts.partial ? 'Whiskers.partials' : 'templates';
 
+  const { SourceNode, SourceMapConsumer } = await import("source-map")
   let output = new SourceNode();
   if (!opts.simple) {
-    if (opts.commonjs) {
-      output.add('var Whiskers = require("' + opts.commonjs + '");');
+    if (opts.esm) {
+      output.add('import Whiskers from "' + opts['esm-import'] + '";');
     } else {
       output.add('(function() {\n');
     }
@@ -213,8 +329,7 @@ export function cli(opts) {
     output.add('{};\n');
   }
 
-  opts.templates.forEach(function(template) {
-    /** @type {PrecompileOptions} */
+  for await (const template of opts.templates) {
     let options = {
       knownHelpers: known,
       knownHelpersOnly: opts.o
@@ -231,7 +346,7 @@ export function cli(opts) {
 
     // If we are generating a source map, we have to reconstruct the SourceNode object
     if (opts.map) {
-      let consumer = new SourceMapConsumer(precompiled.map);
+      let consumer = await new SourceMapConsumer(precompiled.map);
       precompiled = SourceNode.fromStringWithSourceMap(
         precompiled.code,
         consumer
@@ -241,32 +356,37 @@ export function cli(opts) {
     if (opts.simple) {
       output.add([precompiled, '\n']);
     } else {
-      if (!template.name) {
-        throw new Whiskers.Exception('Name missing for template');
+      if (opts.export) {
+        output.add("var compiledFn = ");
+      } else {
+        if (!template.name) {
+          throw new Whiskers.Exception('Name missing for template');
+        }
       }
 
-      if (opts.amd && !multiple) {
-        output.add('return ');
+      if (template.name) {
+        output.add(
+          objectName,
+          "['",
+          template.name,
+          "'] = "
+        )
       }
+
       output.add([
-        objectName,
-        "['",
-        template.name,
-        "'] = template(",
+        "template(",
         precompiled,
         ');\n'
       ]);
     }
-  });
+  }
 
-  // Output the content
   if (!opts.simple) {
-    if (opts.amd) {
-      if (multiple) {
-        output.add(['return ', objectName, ';\n']);
+    if (opts.esm) {
+      if (opts.export) {
+        output.add("export default compiledFn;")
       }
-      output.add('});');
-    } else if (!opts.commonjs) {
+    } else {
       output.add('})();');
     }
   }
@@ -279,16 +399,17 @@ export function cli(opts) {
   output.map = output.map + '';
 
   if (opts.min) {
-    output = minify(output, opts.map);
+    output = await minify(output, opts.map);
   }
 
+  const { writeFile } = await import("node:fs/promises")
   if (opts.map) {
-    fs.writeFileSync(opts.map, output.map, 'utf8');
+    await writeFile(opts.map, output.map, 'utf8');
   }
   output = output.code;
 
   if (opts.output) {
-    fs.writeFileSync(opts.output, output, 'utf8');
+    await writeFile(opts.output, output, 'utf8');
   } else {
     console.log(output);
   }
@@ -309,10 +430,12 @@ function arrayCast(value) {
  * dynamic imports and uglify-js is an optional dependency. Since we are inside NodeJS here, this
  * should not be a problem.
  */
-function minify(output, sourceMapFile) {
+async function minify(output, sourceMapFile) {
+  let uglify;
+
   try {
     // Try to resolve uglify-js in order to see if it does exist
-    require.resolve('uglify-js');
+    uglify = (await import('uglify-js')).minify;
   } catch (e) {
     if (e.code !== 'MODULE_NOT_FOUND') {
       // Something else seems to be wrong
@@ -324,7 +447,8 @@ function minify(output, sourceMapFile) {
     );
     return output;
   }
-  return require('uglify-js').minify(output.code, {
+
+  return uglify(output.code, {
     sourceMap: {
       content: output.map,
       url: sourceMapFile
