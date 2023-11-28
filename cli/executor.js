@@ -71,11 +71,11 @@ export default async function commandExecute(argv, templateFn) {
   const overrideStrings = typeof args.override === "string" ? [args.override] : args.override
   const overrides = {}
   for (const str of overrideStrings ?? []) {
-    const split = str.match(/^.*?=.*$/g)
-    if (!split || split.length != 2) {
+    const split = str.match(/^(.*?)=(.*)$/)
+    if (!split || split.length != 3) {
       throw new WhiskersCliError("Overrides must be in the form KEY=VALUE")
     }
-    overrides[split[0]] = split[1]
+    overrides[split[1]] = split[2]
   }
 
   if (!templateFn) {
