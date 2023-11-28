@@ -273,6 +273,9 @@ export async function cli(opts) {
   const { SourceNode, SourceMapConsumer } = await import("source-map")
   let output = new SourceNode();
   if (!opts.simple) {
+    if (opts.executable) {
+      output.add("#!/usr/bin/env node\n")
+    }
     if (opts.esm) {
       output.add('import Whiskers from "' + opts['esm-import'] + '";');
     } else {
@@ -343,12 +346,12 @@ export async function cli(opts) {
         output.add(["export default ", outputRef, ";"])
       }
       if (opts.executable) {
-        const executorLib = opts['esm-import'].endsWith("index.js")
-          ? opts['esm-import'].slice(0, -"index.js".length) + "/cli/executor.js"
-          : opts['esm-import'] + "/cli/executor.js"
+        const wrapperLib = opts['esm-import'].endsWith("index.js")
+          ? opts['esm-import'].slice(0, -"index.js".length) + "cli/wrapper.js"
+          : opts['esm-import'] + "/cli/wrapper.js"
         output.add([
-          "import('", executorLib, "')",
-            ".then(c => c.default(process.argv.slice(2), ", outputRef, "))"])
+          "import('", wrapperLib, "')",
+            ".then(c => c.wrapper(process?.argv, ", outputRef, "))"])
       }
     } else {
       output.add('})();');

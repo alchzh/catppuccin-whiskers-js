@@ -6,7 +6,7 @@
     ".": "./index.js",
     "./lib/helpers/*.js": "./lib/helpers/*.js",
     "./lib/catppuccin.js": "./lib/catppuccin.js",
-    "./cli/executor.js": "./cli/executor.js"
+    "./cli/wrapper.js": "./cli/wrapper.js"
   },
   "main": "index.js",
   "scripts": {
