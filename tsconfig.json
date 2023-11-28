@@ -19,5 +19,5 @@
     "lib/**/*.ts",
     "cli/*.js",
     "package.json"
-  ]
+, "cli/index.ts"  ]
 }

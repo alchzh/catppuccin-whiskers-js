@@ -3,7 +3,10 @@
   "version": "2.3.0",
   "description": "Modified Handlebars for creating Catppuccin color themes. Based on the whiskers tool in the catppuccin toolbox",
   "exports": {
-    "import": "./index.js"
+    ".": "./index.js",
+    "./lib/helpers/*.js": "./lib/helpers/*.js",
+    "./lib/catppuccin.js": "./lib/catppuccin.js",
+    "./cli/executor.js": "./cli/executor.js"
   },
   "main": "index.js",
   "scripts": {
@@ -20,10 +23,10 @@
     "@catppuccin/palette": "^0.2.0",
     "better-title-case": "^2.1.0",
     "colord": "^2.9.3",
-    "front-matter": "^4.0.2",
     "handlebars": "^4.7.8",
+    "js-yaml": "^4.1.0",
     "minimist": "^1.2.8",
-    "source-map": "^0.7.4",
+    "source-map": "0.6.1",
     "ts-replace-all": "^1.0.0",
     "wordwrap": "^1.0.0"
   },
@@ -32,7 +35,10 @@
   },
   "type": "module",
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/minimist": "^1.2.5",
     "@types/node": "^20.10.0",
+    "@types/wordwrap": "^1.0.3",
     "typescript": "^5.3.2"
   },
   "publishConfig": {

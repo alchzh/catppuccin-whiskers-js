@@ -1,5 +1,7 @@
 // Modified from handlebars/lib/precompiler.js
-export async function commandPrecompile(argv) {
+import { readStream, WhiskersCliError, loadArgs, printSubcommandUsage } from './index.js'
+
+export default async function commandPrecompile(argv) {
   const spec = {
     'f': {
       'type': 'string',
@@ -20,10 +22,17 @@ export async function commandPrecompile(argv) {
       'description': 'Overrides the Whiskers import path in ESM export mode',
       'default': 'catppuccin-whiskers-js'
     },
-    'export': {
+    'X': {
       'type': 'boolean',
-      'description': 'Used with --esm to generate an importable module file with the template function default exported.',
-      'default': false
+      'description': 'Generates an importable module file with the template function default exported. Implies --esm',
+      'default': false,
+      'alias': 'export'
+    },
+    'x': {
+      'type': 'boolean',
+      'description': 'Generates an executable command line script. Can be combined with --export. Implies --esm.',
+      'default': false,
+      'alias': 'executable'
     },
     'k': {
       'type': 'string',
@@ -94,74 +103,32 @@ export async function commandPrecompile(argv) {
     },
     'help': {
       'type': 'boolean',
-      'description': 'Outputs this message'
-    }
+      'description': 'Outputs this message',
+      'alias': 'h'
+    },
+    'U': {
+      'type': 'boolean',
+      'description': "DON'T run in strict mode. Templates will fail silently rather than throw on missing fields.",
+      'alias': 'unstrict'
+    },
   }
 
-  const opts = { alias: {}, boolean: [], default: {}, string: [] };
-
-  for (const [arg, opt] of Object.entries(spec)) {
-    opts[opt.type].push(arg);
-    if ('alias' in opt) opts.alias[arg] = opt.alias;
-    if ('default' in opt) opts.default[arg] = opt.default;
-  }
-
-  const args = (await import("minimist")).default(argv, opts);
-  args._spec = spec;
-
-  args.files = args._;
-  delete args._;
-
+  const args = await loadArgs(argv, spec)
+  args.files = args._
+  delete args._
   await loadTemplates(args)
 
   if (args.help || (!args.templates.length && !args.version)) {
-    printUsage(args._spec, 120);
+    await printSubcommandUsage(
+      'whiskers-js compile',
+      'Compile Whiskers templates to JavaScript',
+      spec,
+      [{arg: 'TEMPLATE|DIRECTORY', description: "Path(s) to templates or directories to compile.", required: true, multiple: true}]
+    )
+    process.exit(+!args.help)
   } else {
-    cli(args);
+    await cli(args);
   }
-}
-
-function pad(n) {
-  var str = '';
-  while (str.length < n) {
-    str += ' ';
-  }
-  return str;
-}
-
-async function printUsage(spec, wrap) {
-  var wordwrap = (await import('wordwrap')).default;
-
-  console.log('Precompile whiskers templates.');
-  console.log('Usage: whiskers-js precompile [template|directory]...');
-
-  var opts = [];
-  var width = 0;
-  Object.keys(spec).forEach(function (arg) {
-    var opt = spec[arg];
-
-    var name = (arg.length === 1 ? '-' : '--') + arg;
-    if ('alias' in opt) name += ', --' + opt.alias;
-
-    var meta = '[' + opt.type + ']';
-    if ('default' in opt) meta += ' [default: ' + JSON.stringify(opt.default) + ']';
-
-    opts.push({ name: name, desc: opt.description, meta: meta });
-    if (name.length > width) width = name.length;
-  });
-
-  console.log('Options:');
-  opts.forEach(function (opt) {
-    var desc = wordwrap(width + 4, wrap + 1)(opt.desc);
-
-    console.log('  %s%s%s%s%s',
-      opt.name,
-      pad(width - opt.name.length + 2),
-      desc.slice(width + 4),
-      pad(wrap - opt.meta.length - desc.split(/\n/).pop().length),
-      opt.meta
-      );
-  });
 }
 
 export async function loadTemplates(opts) {
@@ -171,19 +138,12 @@ export async function loadTemplates(opts) {
   return opts
 }
 
-// https://stackoverflow.com/a/54565854
-async function readStream(stream) {
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  return Buffer.concat(chunks).toString('utf8');
-}
-
 async function loadStrings(opts) {
   let strings = arrayCast(opts.string),
     names = arrayCast(opts.name);
 
   if (names.length !== strings.length && strings.length > 1) {
-    throw new Whiskers.Exception(
+    throw new WhiskersCliError(
       'Number of names did not match the number of string inputs'
     )
   }
@@ -197,7 +157,6 @@ async function loadStrings(opts) {
 
 async function loadFiles(opts) {
   const fsPromises = await import("node:fs/promises")
-  const { default: Whiskers } = await import("../index.js")
 
   // Build file extension pattern
   let extension = (opts.extension || 'handlebars').replace(
@@ -217,7 +176,7 @@ async function loadFiles(opts) {
     try {
       stat = await fsPromises.stat(path)
     } catch (err) {
-      throw new Whiskers.Exception(`Unable to open template file "${path}"`)
+      throw new WhiskersCliError(`Unable to open template file "${path}"`)
     }
 
     if (stat.isDirectory()) {
@@ -269,24 +228,24 @@ export async function cli(opts) {
   }
 
   if (!opts.templates.length && !opts.hasDirectory) {
-    throw new Whiskers.Exception(
+    throw new WhiskersCliError(
       'Must define at least one template or directory.'
     );
   }
 
   if (opts.simple && opts.min) {
-    throw new Whiskers.Exception('Unable to minimize simple output');
+    throw new WhiskersCliError('Unable to minimize simple output');
   }
 
   const multipleIn = opts.templates.length !== 1 || opts.hasDirectory;
-  if (opts.export) {
+  if (opts.export || opts.executable) {
     opts.esm = true;
     if (opts.simple || multipleIn) {
-      throw new Whiskers.Exception('--export can only be used with ESM output for a single file');
+      throw new WhiskersCliError('--export and --exectuable can only be used with ESM output for a single file');
     }
   }
   if (opts.simple && multipleIn) {
-    throw new Whiskers.Exception(
+    throw new WhiskersCliError(
       'Unable to output multiple templates in simple mode'
     );
   }
@@ -329,10 +288,12 @@ export async function cli(opts) {
     output.add('{};\n');
   }
 
-  for await (const template of opts.templates) {
+  let outputRef
+  for (const template of opts.templates) {
     let options = {
       knownHelpers: known,
-      knownHelpersOnly: opts.o
+      knownHelpersOnly: opts.o,
+      strict: !opts.unstrict
     };
 
     if (opts.map) {
@@ -346,7 +307,7 @@ export async function cli(opts) {
 
     // If we are generating a source map, we have to reconstruct the SourceNode object
     if (opts.map) {
-      let consumer = await new SourceMapConsumer(precompiled.map);
+      let consumer = new SourceMapConsumer(precompiled.map);
       precompiled = SourceNode.fromStringWithSourceMap(
         precompiled.code,
         consumer
@@ -354,26 +315,21 @@ export async function cli(opts) {
     }
 
     if (opts.simple) {
-      output.add([precompiled, '\n']);
+      output.add([precompiled, '\n'])
+      outputRef = undefined
     } else {
-      if (opts.export) {
-        output.add("var compiledFn = ");
-      } else {
-        if (!template.name) {
-          throw new Whiskers.Exception('Name missing for template');
-        }
+      if (!template.name && (opts.export || opts.executable)) {
+        template.name = '{{whiskersCompiledTemplate}}'
       }
 
-      if (template.name) {
-        output.add(
-          objectName,
-          "['",
-          template.name,
-          "'] = "
-        )
+      if (!template.name) {
+        throw new WhiskersCliError('Name missing for template');
       }
 
+      outputRef = objectName + "['" + template.name + "']"
       output.add([
+        outputRef,
+        " = ",
         "template(",
         precompiled,
         ');\n'
@@ -384,7 +340,15 @@ export async function cli(opts) {
   if (!opts.simple) {
     if (opts.esm) {
       if (opts.export) {
-        output.add("export default compiledFn;")
+        output.add(["export default ", outputRef, ";"])
+      }
+      if (opts.executable) {
+        const executorLib = opts['esm-import'].endsWith("index.js")
+          ? opts['esm-import'].slice(0, -"index.js".length) + "/cli/executor.js"
+          : opts['esm-import'] + "/cli/executor.js"
+        output.add([
+          "import('", executorLib, "')",
+            ".then(c => c.default(process.argv.slice(2), ", outputRef, "))"])
       }
     } else {
       output.add('})();');

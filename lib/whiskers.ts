@@ -1,11 +1,13 @@
 import Handlebars from 'handlebars'
-import { objectEntries, objectHasOwn, objectKeys } from './ts-extras.js'
+import { objectHasOwn } from './ts-extras.js'
+import yaml from 'js-yaml'
 
-import fm from './front-matter.js'
+import { split } from './front-matter.js'
 import { flavors, labels, accents, type FlavorName } from './catppuccin.js'
 import { decodeUnquote } from './helpers/unquote.js'
 import { WhiskersHelpers, WhiskersKnownHelpers } from './helpers/index.js'
-import { SourceNode } from 'source-map'
+import { SourceMapConsumer, SourceNode, type RawSourceMap } from 'source-map'
+import { offsetSourceNode, type InternalSourceNode } from './source-map.js'
 
 
 export interface WhiskersRuntimeOptions extends Handlebars.RuntimeOptions {
@@ -16,17 +18,22 @@ export interface WhiskersTemplateDelegate<T = any> {
   (context: T, options?: WhiskersRuntimeOptions): string;
 }
 
-export interface FrontMatterAnnotated {
-  "{{whiskersFrontmatter}}"?: object
+export type FrontMatterAnnotated<T> = {
+  "{{whiskersFrontmatter}}"?: T
+  "{{whiskersBodyBegin}}"?: number
 }
 
-function wrapTemplateFunction<T = any>(callable: Handlebars.TemplateDelegate<T>, frontmatter?: {}): WhiskersTemplateDelegate<T> {
+function wrapTemplateFunction<T = any>(
+  callable: Handlebars.TemplateDelegate<T>,
+  frontMatter?: Handlebars.TemplateDelegate<T>
+): WhiskersTemplateDelegate<T> {
   return new Proxy(callable, {
     apply(target, thisArg, argumentsList) {
       const context = argumentsList[0]
       const runtimeOptions: WhiskersRuntimeOptions | undefined = argumentsList[1]
 
       const flavorContext = runtimeOptions?.flavor == null ? {} : flavors[runtimeOptions.flavor]
+
       const whiskersContext = {
         flavors,
         labels,
@@ -34,8 +41,19 @@ function wrapTemplateFunction<T = any>(callable: Handlebars.TemplateDelegate<T>,
         ...flavors,
         flavor: runtimeOptions?.flavor,
         ...flavorContext,
-        ...(frontmatter ?? {}),
         ...context
+      }
+
+      // Load the front matter which should be supplied as a function
+      const frontMatterLoaded = frontMatter == null ? {} : yaml.load(
+        Function.prototype.apply.call(
+          frontMatter, thisArg, [whiskersContext, runtimeOptions]
+        )
+      )
+
+      if (frontMatterLoaded != null) {
+        const frontMatterIsObject = !Array.isArray(frontMatterLoaded) && typeof frontMatterLoaded == "object"
+        Object.assign(whiskersContext, frontMatterIsObject ? frontMatterLoaded : { "this": frontMatterLoaded })
       }
 
       if (runtimeOptions != null && objectHasOwn(runtimeOptions, "flavor")) {
@@ -47,66 +65,48 @@ function wrapTemplateFunction<T = any>(callable: Handlebars.TemplateDelegate<T>,
   })
 }
 
-
-function extendEnv<B extends object, E extends object>(base: B, props: string[], extended: E): B & E {
-  const _super = Object.create(base)
-
-  for (const [key, obj] of Object.entries(extended)) {
-    if (props.includes(key)) {
-      // @ts-ignore
-      _super[key] = base[key]
-      // @ts-ignore
-      base[key] = Function.prototype.bind.call(obj, _super)
-    } else {
-      // @ts-ignore
-      base[key] = obj
-    }
-  }
-  // @ts-ignore
-  return base
+function fakeExtendEnv<B extends object, E extends object>(base: B, extended: E): B & E {
+  return Object.assign(base, extended)
 }
 
 declare namespace _HandlebarsExtras {
-  interface PrecompileOptionsWithMap extends PrecompileOptions {
-    srcName: string
-  }
-
-  interface PrecompileOptionsNoMap extends PrecompileOptions {
-    srcName: undefined
-  }
-
-  interface PrecompileWithMapResult {
-    code: string
-    map: string
-  }
-
-  export function precompile(input: string, options: PrecompileOptionsWithMap): PrecompileWithMapResult
-  export function precompile(input: string, options: PrecompileOptionsNoMap | undefined): string
-
+  export function precompile(input: string, options?: CompileOptions): string
 
   class Compiler {
-    compile(input: any, options?: CompileOptions): any
+    compile(input: any, options?: CompileOptions): Compiler
+  }
+
+  type MappedOutput = {
+    code: string
+    map: string
   }
 
   class JavaScriptCompiler {
     isChild: boolean
     srcFile?: string | null
 
-    compile(environment: any, options: CompileOptions, context: any, asObject: boolean): any
+    compile(environment: any, options: CompileOptions, context: any, asObject: true): TemplateSpecification
+    compile(environment: any, options: CompileOptions, context: any, asObject: false): string | MappedOutput
+    compile(environment: any, options: CompileOptions, context: any, asObject: boolean): TemplateSpecification | string
+
     objectLiteral(obj: object): any
   }
 }
 
 export type HandlebarsEnv = typeof Handlebars & typeof _HandlebarsExtras
 
+type AnnotatedAST = ReturnType<typeof Handlebars.parse> & FrontMatterAnnotated<ReturnType<typeof Handlebars.parse>>
+type AnnotatedCompiler = _HandlebarsExtras.Compiler & FrontMatterAnnotated<_HandlebarsExtras.Compiler>
+type AnnotatedJavaScriptCompiler = _HandlebarsExtras.JavaScriptCompiler & FrontMatterAnnotated<string | SourceNode>
+type TemplateSpecAnnotated = FrontMatterAnnotated<TemplateSpecification>
+type AnnotatedTemplateSpec = TemplateSpecification & TemplateSpecAnnotated
+
 export type WhiskersEnv = HandlebarsEnv & {
   "{{whiskersRegistered}}": true
 
-  template<T = any>(spec: FrontMatterAnnotated): WhiskersTemplateDelegate<T>
+  template<T = any>(spec: FrontMatterAnnotated<TemplateSpecification>): WhiskersTemplateDelegate<T>
   compile<T = any>(input: string, options?: CompileOptions): WhiskersTemplateDelegate<T>
-
-  parse(input: string, options?: CompileOptions): FrontMatterAnnotated
-  create(): WhiskersEnv
+  parse(input: string, options?: CompileOptions): AnnotatedAST
 }
 
 /**
@@ -122,64 +122,99 @@ export function registerWhiskers(handlebarsEnv: HandlebarsEnv | WhiskersEnv): Wh
     return handlebarsEnv as WhiskersEnv
   }
 
-  const whiskersEnv: WhiskersEnv = extendEnv(handlebarsEnv, ["template", "create", "parse"], {
+  const frontMatterEnv = Handlebars.create() as HandlebarsEnv
+
+  const _super = {
+    template: handlebarsEnv.template,
+    parse: handlebarsEnv.parse
+  }
+
+  const whiskersEnv: WhiskersEnv = fakeExtendEnv(handlebarsEnv, {
     "{{whiskersRegistered}}": true as true,
+    "{{frontMatterEnv}}": frontMatterEnv,
 
-    template<T = any>(this: HandlebarsEnv, spec: FrontMatterAnnotated, _super: HandlebarsEnv): WhiskersTemplateDelegate<T> {
-      const template = this.template(spec)
+    template<T = any>(spec: FrontMatterAnnotated<TemplateSpecification>): WhiskersTemplateDelegate<T> {
+      const fn = _super.template<T>(spec)
+      const frontMatterFn = spec["{{whiskersFrontmatter}}"] && _super.template<T>(spec["{{whiskersFrontmatter}}"])
 
-      return wrapTemplateFunction<T>(template, spec["{{whiskersFrontmatter}}"])
+      return wrapTemplateFunction<T>(fn, frontMatterFn)
     },
 
-    create(this: HandlebarsEnv): WhiskersEnv {
-      return registerWhiskers(this.create() as HandlebarsEnv)
+    parse(input: string, options?: CompileOptions): AnnotatedAST {
+      const { frontMatter, body, bodyBegin } = split(input)
+      const bodyAst: AnnotatedAST = _super.parse(body, options)
+      if (frontMatter != null) {
+        bodyAst["{{whiskersFrontmatter}}"] = _super.parse(frontMatter, options)
+      }
+      bodyAst["{{whiskersBodyBegin}}"] = bodyBegin
+      return bodyAst
     },
 
-    parse(this: HandlebarsEnv, input: string, options?: CompileOptions): FrontMatterAnnotated {
-      const { attributes, body } = fm<object>(input)
-      // @ts-ignore
-      const ast = this.parse(body, options)
-      return Object.assign(ast, {
-        "{{whiskersFrontmatter}}": attributes
-      })
-    },
-
-    Compiler: class extends handlebarsEnv.Compiler implements FrontMatterAnnotated {
-      "{{whiskersFrontmatter}}"?: object
-
-      compile(input: FrontMatterAnnotated, options: CompileOptions): FrontMatterAnnotated {
+    Compiler: class WhiskersCompiler extends handlebarsEnv.Compiler
+      implements AnnotatedCompiler {
+      compile(program: AnnotatedAST, options: CompileOptions): AnnotatedCompiler {
         options.knownHelpers = {
           ...WhiskersKnownHelpers,
           ...(options.knownHelpers ?? {}),
         }
-        this["{{whiskersFrontmatter}}"] = input["{{whiskersFrontmatter}}"]
-        return super.compile(input, options)
+        const compiled: AnnotatedCompiler = super.compile(program, options)
+        compiled["{{whiskersFrontmatter}}"] = program["{{whiskersFrontmatter}}"] &&
+          new frontMatterEnv.Compiler().compile(
+            program["{{whiskersFrontmatter}}"], options)
+        compiled["{{whiskersBodyBegin}}"] = program["{{whiskersBodyBegin}}"]
+        return compiled
       }
     },
 
-    JavaScriptCompiler: class extends handlebarsEnv.JavaScriptCompiler implements FrontMatterAnnotated {
-      "{{whiskersFrontmatter}}"?: object
+    JavaScriptCompiler: class WhiskersJavascriptCompiler extends handlebarsEnv.JavaScriptCompiler {
+      "{{whiskersFrontmatter}}"?: string | SourceNode
+      "{{whiskersBodyBegin}}"?: number
 
-      compile(environment: FrontMatterAnnotated, options: CompileOptions, context: any, asObject: boolean) {
-        if (!this.isChild) {
+      compile(environment: AnnotatedCompiler, options: CompileOptions, context: any, asObject: true):
+        AnnotatedTemplateSpec;
+      compile(environment: AnnotatedCompiler, options: CompileOptions, context: any, asObject: false): string;
+      compile(environment: AnnotatedCompiler, options: CompileOptions, context: any, asObject: boolean) {
+        if (!this.isChild && environment["{{whiskersFrontmatter}}"] != null) {
           if (asObject) {
-            const templateSpec = super.compile(environment, options, context, asObject)
-            templateSpec["{{whiskersFrontmatter}}"] = environment["{{whiskersFrontmatter}}"]
+            const templateSpec: AnnotatedTemplateSpec = super.compile(
+              environment, options, context, true)
+            templateSpec["{{whiskersFrontmatter}}"] = new frontMatterEnv.JavaScriptCompiler().compile(
+              environment["{{whiskersFrontmatter}}"], options, context, true)
             return templateSpec
           } else {
-            this["{{whiskersFrontmatter}}"] = environment["{{whiskersFrontmatter}}"]
+            this["{{whiskersBodyBegin}}"] = environment["{{whiskersBodyBegin}}"]
+            const precompiledFrontMatter = new frontMatterEnv.JavaScriptCompiler().compile(
+              environment["{{whiskersFrontmatter}}"], options, context, false)
+            if (typeof precompiledFrontMatter === "string") {
+              // @ts-ignore
+              this["{{whiskersFrontmatter}}"] = new SourceNode(1, 0, null, precompiledFrontMatter)
+            } else {
+              const frontMatterSourceNode = SourceNode.fromStringWithSourceMap(
+                precompiledFrontMatter.code,
+                new SourceMapConsumer(JSON.parse(precompiledFrontMatter.map) as RawSourceMap),
+              ) as InternalSourceNode
+              offsetSourceNode(frontMatterSourceNode, 2, 0)
+              const templateSpecNode = frontMatterSourceNode.children[0] as InternalSourceNode
+              templateSpecNode.line = 1
+              this["{{whiskersFrontmatter}}"] = frontMatterSourceNode
+            }
           }
         }
         return super.compile(environment, options, context, asObject)
       }
 
       objectLiteral(obj: object) {
-        if (this["{{whiskersFrontmatter}}"] != null && objectHasOwn(obj, "main") && objectHasOwn(obj, "compiler")) {
-          const whiskersFrontmatter = new SourceNode(
-            0, 0, this.srcFile ?? null, JSON.stringify(this["{{whiskersFrontmatter}}"]))
+        if (
+          this["{{whiskersFrontmatter}}"] != null
+          && objectHasOwn(obj, "main")
+          && objectHasOwn(obj, "compiler")
+        ) {
+          // @ts-ignore
+          this.source.currentLocation.start.line = (this["{{whiskersBodyBegin}}"] ?? 3) - 1
           return super.objectLiteral({
             ...obj,
-            "{{whiskersFrontmatter}}": whiskersFrontmatter,
+            main: offsetSourceNode(obj.main as InternalSourceNode, this["{{whiskersBodyBegin}}"] ?? 3, 0),
+            "{{whiskersFrontmatter}}": this["{{whiskersFrontmatter}}"]
           })
         } else {
           return super.objectLiteral(obj)

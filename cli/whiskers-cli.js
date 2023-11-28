@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 
 const argv = process.argv
-if (argv.length >= 3 && argv[2] == "precompile") {
+
+if (argv[2] == "compile") {
   import("./precompiler.js")
-    .then(c => c.commandPrecompile(argv.slice(3)))
+    .then(c => c.default(argv.slice(3)))
+} else if (argv[2] == "render") {
+  import("./executor.js")
+    .then(c => c.default(argv.slice(3)))
 } else {
-  console.error('Usage: whiskers-js [precompile|execute]...')
+  printUsage()
+}
+
+function printUsage() {
+  console.error('Usage: whiskers-js [compile|render] ...')
+  console.error('Do --help on a subcommand to see usage info')
   process.exit(1)
 }
