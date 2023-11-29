@@ -351,7 +351,7 @@ export async function cli(opts) {
           : opts['esm-import'] + "/cli/wrapper.js"
         output.add([
           "import('", wrapperLib, "')",
-            ".then(c => c.wrapper(process?.argv, ", outputRef, "))"])
+            ".then(c => c.wrapper(process?.argv, ", outputRef, ", import.meta.url))"])
       }
     } else {
       output.add('})();');

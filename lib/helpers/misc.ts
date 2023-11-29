@@ -18,7 +18,7 @@ export default {
   lowercase(str: string) {
     return str.toLowerCase()
   },
-  async titlecase(str: string) {
+  titlecase(str: string) {
     return betterTitleCase(str)
   },
   get(obj: object, ...args: any[]) {
