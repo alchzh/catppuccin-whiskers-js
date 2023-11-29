@@ -1,7 +1,6 @@
 import Handlebars from 'handlebars'
 
 import * as WhiskersLib from './lib/whiskers.js'
-export * as WhiskersLib from './lib/whiskers.js'
 
 export { WhiskersHelpers } from './lib/helpers/index.js'
 export * as Catppuccin from './lib/catppuccin.js'

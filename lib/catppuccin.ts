@@ -23,7 +23,17 @@ export type LabelContexts = {
 
 export const flavors: FlavorContexts = objectFromEntries(
   objectEntries(cptFlavors).map(([flavor, variantLabels]) => [flavor,
-    objectFromEntries(objectKeys(cptLabels).map(label => [label, variantLabels[label].hex.substring(1)]))]
+    Object.assign({},
+      objectFromEntries(
+        objectKeys(cptLabels)
+          .map(label => [label, variantLabels[label].hex.substring(1)]
+        )
+      ),
+      {
+        isLight: isLight(flavor),
+        isDark: isDark(flavor)
+      }
+    )]
   )
 )
 
