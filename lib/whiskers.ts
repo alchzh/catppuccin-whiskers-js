@@ -53,7 +53,7 @@ function wrapTemplateFunction<T = any>(
 
       if (frontMatterLoaded != null) {
         const frontMatterIsObject = !Array.isArray(frontMatterLoaded) && typeof frontMatterLoaded == "object"
-        Object.assign(whiskersContext, frontMatterIsObject ? frontMatterLoaded : { "this": frontMatterLoaded })
+        Object.assign(whiskersContext, frontMatterIsObject ? frontMatterLoaded : { "this": frontMatterLoaded }, context)
       }
 
       if (runtimeOptions != null && objectHasOwn(runtimeOptions, "flavor")) {
