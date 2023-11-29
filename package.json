@@ -1,6 +1,6 @@
 {
   "name": "catppuccin-whiskers-js",
-  "version": "2.4.4",
+  "version": "2.4.5",
   "description": "Modified Handlebars for creating Catppuccin color themes. Based on the whiskers tool in the catppuccin toolbox",
   "exports": {
     ".": "./index.js",
