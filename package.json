@@ -10,7 +10,7 @@
   },
   "main": "index.js",
   "scripts": {
-    "prepare": "tsc && chmod +x dist/cli/whiskers-cli.js",
+    "prepare": "tsc && ./emit-catppuccin.js && chmod +x dist/cli/whiskers-cli.js",
     "publish-scoped": "./publish-scoped.sh"
   },
   "keywords": [
@@ -20,7 +20,6 @@
   "author": "Albert Zhang <alchzh@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "@catppuccin/palette": "^0.2.0",
     "better-title-case": "^2.1.0",
     "colord": "^2.9.3",
     "handlebars": "^4.7.8",
@@ -39,7 +38,8 @@
     "@types/minimist": "^1.2.5",
     "@types/node": "^20.10.0",
     "@types/wordwrap": "^1.0.3",
-    "typescript": "^5.3.2"
+    "typescript": "^5.3.2",
+    "@catppuccin/palette": "^0.2.0"
   },
   "publishConfig": {
     "directory": "dist"

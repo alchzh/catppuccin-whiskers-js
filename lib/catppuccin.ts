@@ -30,8 +30,8 @@ export const flavors: FlavorContexts = objectFromEntries(
         )
       ),
       {
-        isLight: isLight(flavor),
-        isDark: isDark(flavor)
+        isLight: flavor === "latte",
+        isDark: flavor !== "latte"
       }
     )]
   )
@@ -65,11 +65,3 @@ type AccentLabel = typeof accentLabels[number]
 export const accents: Pick<LabelContexts, AccentLabel> = objectFromEntries(
   accentLabels.map(a => [a, labels[a]])
 )
-
-export function isLight(flavor: string) {
-  return flavor === "latte" || (!(flavor in cptFlavors) && undefined)
-}
-
-export function isDark(flavor: string) {
-  return flavor !== "latte" && (flavor in cptFlavors || undefined)
-}
